@@ -137,6 +137,18 @@ Each mode saves the full canvas panorama.
 3. **Image Warping**: Warp images using `warp(image, homography)` with backward transform
 4. **Blending**: Merge warped images using maximum intensity for overlapping regions
 
+### Correspondence Effects Analysis
+To reproduce the correspondence sensitivity experiments on the Paris image pair:
+```bash
+python correspondence_effects.py
+```
+This generates panoramas and a summary report in `output/correspondence_effects/` for:
+- Using only five correspondences
+- Using many correspondences
+- Injecting incorrect matches
+- Adding pixel noise with different variances
+- Disabling normalization
+
 ## Notes
 - Manual point correspondence selection (automated feature detection forbidden)
 - Homography computation uses DLT (Direct Linear Transform) algorithm with normalization

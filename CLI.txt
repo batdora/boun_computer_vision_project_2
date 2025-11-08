@@ -1,0 +1,13 @@
+To use the anchor-based approach, run the following command:
+
+python pipeline_example.py anchor images/paris/paris_a.jpg \
+    images/paris/paris_b.jpg images/paris/paris_c.jpg \
+    images/paris/correspondences/paris_a_paris_b_correspondences.npy \
+    images/paris/correspondences/paris_b_paris_c_correspondences.npy \
+    output/my_custom_paris.jpg
+
+To use the pairwise approach, run the following command:
+
+python pipeline_example.py pair images/paris/paris_a.jpg images/paris/paris_b.jpg \
+    ltr images/paris/correspondences/paris_a_paris_b_correspondences.npy \
+    output/paris_a_b_custom.jpg
