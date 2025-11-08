@@ -1,2 +1,10 @@
 # Python
 __pycache__/
+
+# Local experiments / debugging scripts
+auto_correspondence_experiment.py
+auto_experiment.py
+
+# Auto correspondence outputs
+output/auto_correspondence/
+output/auto_experiments/

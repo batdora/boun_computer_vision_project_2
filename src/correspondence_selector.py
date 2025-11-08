@@ -31,8 +31,8 @@ def get_output_filename(img1_path, img2_path, output_dir=None):
     img1_name = img1_path.stem
     img2_name = img2_path.stem
     
-    # Create output filename: img1_img2_correspondences.json
-    output_filename = f"{img1_name}_{img2_name}_correspondences.json"
+    # Create output filename: img1_img2_correspondences.npy
+    output_filename = f"{img1_name}_{img2_name}_correspondences.npy"
     
     if output_dir:
         output_dir = Path(output_dir)

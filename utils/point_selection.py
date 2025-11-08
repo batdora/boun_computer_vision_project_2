@@ -286,49 +286,76 @@ def select_correspondences(img1, img2, n_points=4, title1="Image 1", title2="Ima
 
 def save_correspondences(points1, points2, output_path, img1_name=None, img2_name=None):
     """
-    Save point correspondences to a JSON file.
+    Save point correspondences to a file using numpy.save.
     
     Args:
         points1: Numpy array of points from first image (n_points, 2)
         points2: Numpy array of points from second image (n_points, 2)
-        output_path: Path to save the correspondences file
-        img1_name: Name of first image (optional)
-        img2_name: Name of second image (optional)
+        output_path: Path to save the correspondences file (.npy format)
+        img1_name: Name of first image (optional, saved as metadata)
+        img2_name: Name of second image (optional, saved as metadata)
     """
     output_path = Path(output_path)
     
-    # Convert numpy arrays to lists for JSON serialization
-    data = {
-        'image1_name': img1_name,
-        'image2_name': img2_name,
-        'num_points': len(points1),
-        'points1': points1.tolist(),
-        'points2': points2.tolist()
-    }
+    # Ensure .npy extension
+    if output_path.suffix != '.npy':
+        output_path = output_path.with_suffix('.npy')
     
-    with open(output_path, 'w') as f:
-        json.dump(data, f, indent=4)
+    # Stack points into single array: shape (2, n_points, 2)
+    # First dimension: [points1, points2]
+    correspondences = np.array([points1, points2])
+    
+    # Save using numpy
+    np.save(output_path, correspondences)
+    
+    # Also save metadata as separate file if names provided
+    if img1_name or img2_name:
+        metadata_path = output_path.with_suffix('.json')
+        metadata = {
+            'image1_name': img1_name,
+            'image2_name': img2_name,
+            'num_points': len(points1)
+        }
+        with open(metadata_path, 'w') as f:
+            json.dump(metadata, f, indent=4)
     
     print(f"\nCorrespondences saved to: {output_path}")
 
 
 def load_correspondences(file_path):
     """
-    Load point correspondences from a JSON file.
+    Load point correspondences from a numpy file.
     
     Args:
-        file_path: Path to the correspondences file
+        file_path: Path to the correspondences file (.npy format)
         
     Returns:
         Tuple of (points1, points2) as numpy arrays
     """
     file_path = Path(file_path)
     
-    with open(file_path, 'r') as f:
-        data = json.load(f)
-    
-    points1 = np.array(data['points1'])
-    points2 = np.array(data['points2'])
-    
-    return points1, points2, data
+    # Try .npy first, then .json (for backward compatibility)
+    if file_path.suffix == '.npy':
+        correspondences = np.load(file_path)
+        # Shape should be (2, n_points, 2)
+        points1 = correspondences[0]
+        points2 = correspondences[1]
+        
+        # Try to load metadata if exists
+        metadata_path = file_path.with_suffix('.json')
+        data = {}
+        if metadata_path.exists():
+            with open(metadata_path, 'r') as f:
+                data = json.load(f)
+        
+        return points1, points2, data
+    else:
+        # Backward compatibility: load from JSON
+        with open(file_path, 'r') as f:
+            data = json.load(f)
+        
+        points1 = np.array(data['points1'])
+        points2 = np.array(data['points2'])
+        
+        return points1, points2, data
 
