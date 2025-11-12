@@ -11,17 +11,23 @@ Outputs are written under `output/correspondence_effects/`:
   - `summary.txt` : reprojection error statistics for every scenario
 
 Usage:
-    python correspondence_effects.py
+    python -m experiments.correspondance_experiment
 """
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import Callable, Dict, Tuple
 
 import numpy as np  # type: ignore
 
-from pipeline_example import (
+# Ensure project root is on sys.path for module imports
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from experiments.pipeline_example import (
     load_image_rgb,
     compute_canvas_and_offsets,
     ensure_uint8,

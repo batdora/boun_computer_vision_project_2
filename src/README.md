@@ -32,18 +32,12 @@ Command-line tool for computing and saving homographies.
 #### `compute_all_homographies.py`
 Batch computation of all homographies for all image sets.
 
-### Pipeline Example
-
-#### `pipeline_example.py`
-Complete working example demonstrating:
-- Loading images and correspondences
-- Computing homographies
-- Warping images
-- Blending into panorama
-
 ## Main Components
 - ✅ Homography computation (DLT with normalization)
 - ✅ Image warping (backward transform)
 - ✅ Image blending (maximum intensity)
 - ✅ Manual point correspondence handling
+
+> **Note:** example and experiment scripts now live under `experiments/`. Use
+> `python -m experiments.pipeline_example ...` for the legacy demos.
 

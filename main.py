@@ -1,120 +1,195 @@
 """
-Main script for image stitching pipeline.
-Implements the full workflow: point selection, homography estimation, and image warping.
+Panorama stitching entry point.
+
+Given a list of images ordered from left to right, this script:
+1. Collects (or loads) correspondence points for every consecutive pair.
+2. Estimates homographies that map each image onto the coordinate frame of the
+   left-most image.
+3. Warps all images into the shared canvas.
+4. Blends them using maximum-intensity blending and writes the resulting
+   panorama to disk.
 """
 
+from __future__ import annotations
+
+import argparse
 import sys
 from pathlib import Path
+from typing import List
+
 import numpy as np
 
-# Add project root to path
-sys.path.insert(0, str(Path(__file__).parent))
+# Ensure project root modules are importable when executed as a script
+PROJECT_ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(PROJECT_ROOT))
 
-from utils.image_io import load_image, bgr_to_rgb, rgb_to_bgr
-from utils.point_selection import select_correspondences, save_correspondences, load_correspondences
-from src.homography import computeH
-from src.warping import warp
+from src.homography import computeH  # noqa: E402
+from src.blending import create_panorama  # noqa: E402
+from utils.image_io import load_image, bgr_to_rgb, rgb_to_bgr  # noqa: E402
+from utils.point_selection import (  # noqa: E402
+    load_correspondences,
+    save_correspondences,
+    select_correspondences,
+)
 
 
-def main():
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Interactive panorama stitching for a left-to-right image sequence."
+    )
+    parser.add_argument(
+        "images",
+        nargs="+",
+        help="Image paths ordered from left to right (minimum two).",
+    )
+    parser.add_argument(
+        "--output",
+        default="output/panorama.jpg",
+        help="Path to the stitched panorama image (default: output/panorama.jpg).",
+    )
+    parser.add_argument(
+        "--corr-dir",
+        default="correspondences",
+        help="Directory to read/write correspondence .npy files.",
+    )
+    parser.add_argument(
+        "--points",
+        type=int,
+        default=8,
+        help="Number of correspondences to collect per adjacent pair (default: 8).",
+    )
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Force re-selection of correspondences even if cache files exist.",
+    )
+    return parser.parse_args()
+
+
+def ensure_correspondences(
+    left_img_rgb: np.ndarray,
+    right_img_rgb: np.ndarray,
+    left_path: Path,
+    right_path: Path,
+    corr_path: Path,
+    n_points: int,
+    overwrite: bool,
+) -> tuple[np.ndarray, np.ndarray]:
     """
-    Main pipeline for image stitching.
-    
-    Usage:
-        python main.py <image1_path> <image2_path> [num_points] [corr_file]
-        
-    If corr_file is provided, it will load correspondences from that file.
-    Otherwise, it will interactively ask for point selection.
+    Load existing correspondences if available (and not overwriting), otherwise
+    launch the interactive picker and persist the selection.
     """
-    if len(sys.argv) < 3:
-        print("Usage: python main.py <image1_path> <image2_path> [num_points] [corr_file]")
-        print("\nExample:")
-        print("  python main.py images/paris/paris_a.jpg images/paris/paris_b.jpg")
-        print("  python main.py images/paris/paris_a.jpg images/paris/paris_b.jpg 6")
-        print("  python main.py images/paris/paris_a.jpg images/paris/paris_b.jpg 4 correspondences.npy")
-        sys.exit(1)
-    
-    img1_path = sys.argv[1]
-    img2_path = sys.argv[2]
-    n_points = int(sys.argv[3]) if len(sys.argv) > 3 else 4
-    corr_file = sys.argv[4] if len(sys.argv) > 4 else None
-    
-    print("="*60)
-    print("Image Stitching Pipeline")
-    print("="*60)
-    
-    # Load images
-    print(f"\n1. Loading images...")
-    print(f"   Image 1: {img1_path}")
-    print(f"   Image 2: {img2_path}")
-    
-    img1_bgr = load_image(img1_path)
-    img2_bgr = load_image(img2_path)
-    img1_rgb = bgr_to_rgb(img1_bgr)
-    img2_rgb = bgr_to_rgb(img2_bgr)
-    
-    # Step 1: Point correspondence selection
-    print(f"\n2. Point correspondence selection...")
-    if corr_file and Path(corr_file).exists():
-        print(f"   Loading correspondences from: {corr_file}")
-        points_im1, points_im2, _ = load_correspondences(corr_file)
-        print(f"   Loaded {len(points_im1)} corresponding points")
-    else:
-        print(f"   Interactive selection: click {n_points} points on each image")
-        points_im1, points_im2 = select_correspondences(
-            img1_rgb, 
-            img2_rgb, 
-            n_points=n_points,
-            title1=Path(img1_path).name,
-            title2=Path(img2_path).name
+    if corr_path.exists() and not overwrite:
+        points_left, points_right, _metadata = load_correspondences(corr_path)
+        print(f"   Loaded cached correspondences from {corr_path}")
+        return np.asarray(points_left), np.asarray(points_right)
+
+    print(f"   Selecting correspondences for {left_path.name} ↔ {right_path.name}")
+    points_left, points_right = select_correspondences(
+        left_img_rgb,
+        right_img_rgb,
+        n_points=n_points,
+        title1=left_path.name,
+        title2=right_path.name,
+    )
+
+    corr_path.parent.mkdir(parents=True, exist_ok=True)
+    save_correspondences(
+        points_left,
+        points_right,
+        corr_path,
+        img1_name=left_path.name,
+        img2_name=right_path.name,
+    )
+    print(f"   Saved correspondences to {corr_path}")
+    return points_left, points_right
+
+
+def build_homographies(
+    images_rgb: List[np.ndarray],
+    image_paths: List[Path],
+    corr_dir: Path,
+    n_points: int,
+    overwrite: bool,
+) -> List[np.ndarray]:
+    """
+    Collect correspondences for each adjacent pair and accumulate homographies
+    that map every image into the coordinate system of the first image.
+    """
+    num_images = len(images_rgb)
+    cumulative_homographies: List[np.ndarray] = [np.eye(3, dtype=float)]
+
+    for idx in range(num_images - 1):
+        left_img = images_rgb[idx]
+        right_img = images_rgb[idx + 1]
+        left_path = image_paths[idx]
+        right_path = image_paths[idx + 1]
+
+        corr_filename = f"{left_path.stem}_{right_path.stem}_correspondences.npy"
+        corr_path = corr_dir / corr_filename
+
+        print(f"\nCollecting correspondences for pair {idx + 1}/{num_images - 1}:")
+        points_left, points_right = ensure_correspondences(
+            left_img,
+            right_img,
+            left_path,
+            right_path,
+            corr_path,
+            n_points,
+            overwrite,
         )
-        
-        # Save correspondences
-        if not corr_file:
-            corr_file = f"{Path(img1_path).stem}_{Path(img2_path).stem}_correspondences.npy"
-        
-        save_correspondences(
-            points_im1, 
-            points_im2, 
-            corr_file,
-            img1_name=Path(img1_path).name,
-            img2_name=Path(img2_path).name
+
+        # Map the right image onto the left image's coordinate frame
+        H_right_to_left = computeH(points_right, points_left)
+        cumulative_homographies.append(
+            cumulative_homographies[-1] @ H_right_to_left
         )
-        print(f"   Correspondences saved to: {corr_file}")
-    
-    # Step 2: Homography estimation
-    print(f"\n3. Homography estimation...")
-    print(f"   Computing H from {len(points_im1)} point correspondences")
-    homography = computeH(points_im1, points_im2)
-    print(f"   Homography matrix computed:")
-    print(f"   {homography}")
-    
-    # Step 3: Image warping
-    print(f"\n4. Image warping...")
-    print(f"   Warping image 1 using homography...")
-    image_warped = warp(img1_rgb, homography)
-    print(f"   Warped image shape: {image_warped.shape}")
-    
-    # Save warped image
-    output_path = Path("output") / f"{Path(img1_path).stem}_warped.jpg"
-    output_path.parent.mkdir(exist_ok=True)
-    
-    # Save warped image
-    # Try OpenCV first, fallback to PIL
+        print("   Homography (right → left) computed.")
+
+    return cumulative_homographies
+
+
+def stitch_sequence(args: argparse.Namespace) -> Path:
+    image_paths = [Path(p) for p in args.images]
+    if len(image_paths) < 2:
+        raise ValueError("Please provide at least two images.")
+
+    print("Loading images...")
+    images_rgb: List[np.ndarray] = []
+    for path in image_paths:
+        img_bgr = load_image(path)
+        images_rgb.append(bgr_to_rgb(img_bgr))
+        print(f"   {path} loaded with shape {images_rgb[-1].shape}")
+
+    corr_dir = Path(args.corr_dir)
+    homographies = build_homographies(
+        images_rgb, image_paths, corr_dir, args.points, args.overwrite
+    )
+
+    print("\nWarping and blending panorama...")
+    panorama = create_panorama(images_rgb, homographies=homographies)
+    panorama_uint8 = np.clip(panorama, 0, 255).astype(np.uint8)
+
+    output_path = Path(args.output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    panorama_bgr = rgb_to_bgr(panorama_uint8)
+
     try:
-        warped_bgr = rgb_to_bgr(image_warped)
-        import cv2
-        cv2.imwrite(str(output_path), warped_bgr)
-    except ImportError:
-        from PIL import Image
-        # Ensure values are in valid range
-        warped_save = np.clip(image_warped, 0, 255).astype(np.uint8)
-        Image.fromarray(warped_save).save(output_path)
-    print(f"   Warped image saved to: {output_path}")
-    
-    print("\n" + "="*60)
-    print("Pipeline completed successfully!")
-    print("="*60)
+        import cv2  # type: ignore
+
+        cv2.imwrite(str(output_path), panorama_bgr)
+    except Exception:  # pragma: no cover - fallback rarely needed
+        from PIL import Image  # type: ignore
+
+        Image.fromarray(panorama_uint8).save(output_path)
+
+    print(f"\nPanorama written to {output_path}")
+    return output_path
+
+
+def main() -> None:
+    args = parse_args()
+    stitch_sequence(args)
 
 
 if __name__ == "__main__":

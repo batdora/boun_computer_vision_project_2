@@ -17,7 +17,8 @@ except ImportError:
     Image = None
 
 # Add project root to path
-sys.path.insert(0, str(Path(__file__).parent))
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT_ROOT))
 
 # Import image I/O functions directly to avoid cv2 dependency issue
 try:
@@ -35,9 +36,12 @@ except ImportError:
 
     def rgb_to_bgr(img):
         return img
-# Import functions directly to avoid utils.__init__ importing image_io
 import importlib.util
-spec = importlib.util.spec_from_file_location("point_selection", Path(__file__).parent / "utils" / "point_selection.py")
+
+# Import functions directly to avoid utils.__init__ importing image_io
+spec = importlib.util.spec_from_file_location(
+    "point_selection", PROJECT_ROOT / "utils" / "point_selection.py"
+)
 point_selection = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(point_selection)
 load_correspondences = point_selection.load_correspondences
@@ -47,8 +51,9 @@ from src.warping import warp, get_warp_bounds
 from src.blending import blend_images, create_panorama
 
 # Import math_utils directly to avoid cv2 dependency through utils.__init__
-import importlib.util
-spec_math = importlib.util.spec_from_file_location("math_utils", Path(__file__).parent / "utils" / "math_utils.py")
+spec_math = importlib.util.spec_from_file_location(
+    "math_utils", PROJECT_ROOT / "utils" / "math_utils.py"
+)
 math_utils = importlib.util.module_from_spec(spec_math)
 spec_math.loader.exec_module(math_utils)
 to_homogeneous = math_utils.to_homogeneous
@@ -410,12 +415,12 @@ def run_paris_demo():
 def print_usage():
     print(
         "Usage:\n"
-        "  python pipeline_example.py demo\n"
+        "  python -m experiments.pipeline_example demo\n"
         "      Run the Paris anchor-based demo.\n\n"
-        "  python pipeline_example.py anchor <left_img> <middle_img> <right_img> "
+        "  python -m experiments.pipeline_example anchor <left_img> <middle_img> <right_img> "
         "[left_middle_corr] [middle_right_corr] [output]\n"
         "      Stitch three images using the middle one as anchor.\n\n"
-        "  python pipeline_example.py pair <img_a> <img_b> [ltr|rtl] [corr_file] [output]\n"
+        "  python -m experiments.pipeline_example pair <img_a> <img_b> [ltr|rtl] [corr_file] [output]\n"
         "      Stitch two images pairwise. Direction 'ltr' warps img_a -> img_b (default), "
         "'rtl' warps img_b -> img_a.\n"
     )

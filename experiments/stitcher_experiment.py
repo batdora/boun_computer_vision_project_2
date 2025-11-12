@@ -6,16 +6,22 @@ for both the cmpe_building and north_campus datasets without requiring CLI input
 
 This script is meant for exploratory analysis and can be invoked directly, e.g.:
 
-    python stitcher_experiment.py
+    python -m experiments.stitcher_experiment
 
 It relies on the existing correspondence .npy files generated via the manual
 point selection tool.
 """
 
+import sys
 from pathlib import Path
 import numpy as np  # type: ignore
 
-from pipeline_example import (
+# Ensure project root modules are importable when executed directly
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from experiments.pipeline_example import (
     load_image_rgb,
     ensure_correspondence_direction,
     compute_canvas_and_offsets,

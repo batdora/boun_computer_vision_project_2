@@ -1,158 +1,106 @@
 # Computer Vision Project 2
 
-## Project Overview
-Image stitching and panorama creation using manual point correspondences.
+Panorama stitching with fully manual correspondence selection. The project
+follows the course guidelines:
 
-## Project Structure
+- Interactive point picking (no automated feature detectors)
+- Homography estimation via SVD
+- Custom backward-warping
+- Maximum-intensity blending
+
+## Repository Layout
+
 ```
 Project 2/
-├── src/              # Source code
-├── utils/            # Utility functions
-├── images/           # Input images
-└── README.md         # This file
+├── main.py                 # Primary stitching entry point (multi-image)
+├── src/                    # Core homography / warping / blending modules
+├── utils/                  # Shared utilities (image I/O, point selection)
+├── experiments/            # Optional exploration scripts (not submitted)
+├── images/                 # Provided datasets + saved correspondences
+├── correspondences/        # (Created automatically) cached manual matches
+├── output/                 # Generated panoramas and experiment artefacts
+└── README.md               # Project documentation
 ```
 
 ## Requirements
+
 - Python 3.x
-- OpenCV (cv2) - for image loading (can use PIL as fallback)
+- OpenCV (`opencv-python`) – image I/O and fast remap (PIL is used as fallback)
 - NumPy
-- Matplotlib - for interactive point selection
-- SciPy - for image interpolation (fallback if OpenCV remap not available)
+- Matplotlib – interactive correspondence picker
+- SciPy – interpolation fallback when OpenCV remap is unavailable
 
-## Usage
-
-### Basic Pipeline (Two Images)
-
-Run the basic pipeline from `main.py` for two images:
+Install the dependencies with:
 
 ```bash
-python main.py <image1_path> <image2_path> [num_points] [corr_file]
+pip install -r requirements.txt
 ```
 
-**Examples:**
-```bash
-# Interactive point selection (default 4 points)
-python main.py images/paris/paris_a.jpg images/paris/paris_b.jpg
+## Core Workflow (`main.py`)
 
-# Specify number of points
-python main.py images/paris/paris_a.jpg images/paris/paris_b.jpg 6
+`main.py` consumes two or more images ordered from left to right, collects or
+reuses correspondences for each adjacent pair, and outputs a stitched panorama.
 
-# Load existing correspondences
-python main.py images/paris/paris_a.jpg images/paris/paris_b.jpg 4 correspondences.npy
+```
+python main.py [options] image_0 image_1 ... image_n
 ```
 
-**Pipeline Steps:**
-1. Load images
-2. Select corresponding points (interactive or from file)
-3. Compute homography using `computeH(points_im1, points_im2)`
-4. Warp image using `warp(image, homography)`
-5. Save warped image to `output/` directory
+Options:
 
-### Point Correspondence Selection Only
+- `--output PATH` – output panorama path (default `output/panorama.jpg`)
+- `--corr-dir DIR` – directory for cached `.npy` correspondences (default
+  `correspondences/`)
+- `--points N` – number of points to collect per pair (default `8`)
+- `--overwrite` – force re-selection even if a cache file already exists
 
-Use the correspondence selector to manually select corresponding points:
+Pipeline stages:
 
-```bash
-python src/correspondence_selector.py <image1_path> <image2_path> [num_points] [output_dir]
+1. **Load images** in BGR (OpenCV) and convert to RGB for Matplotlib.
+2. **For each consecutive pair**, call the interactive picker if no cached
+   correspondences exist.
+3. **Estimate homographies** mapping every image onto the coordinate frame of
+   the left-most image by chaining right→left transforms.
+4. **Warp and blend** the full stack with maximum-intensity fusion.
+5. **Save the panorama** to the requested path.
+
+Correspondence files are saved automatically as
+`<left>_<right>_correspondences.npy` (shape `(2, n_points, 2)`), making iterative
+refinement quick—re-run with `--overwrite` to draw new points.
+
+## Supporting Tools
+
+- `utils/point_selection.py` – the Matplotlib-driven picker plus
+  `numpy.save`/`numpy.load` helpers.
+- `src/homography.py` – `computeH(points_im1, points_im2)` implementing DLT +
+  SVD with optional point normalization.
+- `src/warping.py` – `warp(image, homography)` using a backward transform with
+  OpenCV remap / SciPy griddata / NumPy fallbacks.
+- `src/blending.py` – maximum-intensity compositing utilities and a convenience
+  `create_panorama` wrapper leveraged by `main.py`.
+
+## Experiments (Optional)
+
+Exploratory scripts now live in `experiments/` and are not part of the course
+submission. Run them as modules so that imports resolve correctly, e.g.:
+
+```
+python -m experiments.pairwise_demo ...
+python -m experiments.pipeline_example ...
+python -m experiments.stitcher_experiment
+python -m experiments.correspondance_experiment
 ```
 
-**Output Format:**
-- Correspondences saved as `.npy` file using `numpy.save()`
-- Can be loaded later using `numpy.load()` for reuse
-- Format: Array of shape `(2, n_points, 2)` where first dimension is `[points1, points2]`
+See `experiments/README.md` for details on each script.
 
-## Homography Estimation
+## Manual-Only Reminder
 
-### Compute All Homographies
-Automatically compute all homographies for all image sets:
-```bash
-python src/compute_all_homographies.py
-```
+- Automated feature detectors (SIFT/SURF/Harris/ORB/etc.) were removed from the
+  codebase.
+- Every homography used in the main pipeline originates from user-selected
+  correspondences stored as `.npy` files.
+- The blending strategy honours the assignment’s “maximum intensity” directive.
 
-This script handles different strategies based on the dataset:
-- **Paris**: Anchor-based (paris_a→paris_b, paris_c→paris_b)
-- **cmpe_building & north_campus**: Sequential composition
-  - Left chain: left_2→left_1→middle
-  - Right chain: right_2→right_1→middle
-
-Output homographies are saved in `images/<dataset>/homographies/` as `.npy` files.
-
-### Single Image Pair
-Compute homography from a correspondence file:
-```bash
-python src/homography_estimator.py <corr_file> [output_file]
-```
-
-Example:
-```bash
-python src/homography_estimator.py images/paris/correspondences/paris_a_paris_b_correspondences.json
-```
-
-### Three-Image Setup (Middle Anchor)
-For images with left, middle, and right views, compute homographies with middle as anchor:
-```bash
-python src/homography_estimator.py --three-images <corr_left_middle> <corr_right_middle> [output_dir]
-```
-
-**Strategy:**
-- **Paris**: Anchor-based (paris_b as anchor)
-  - `H_paris_a_to_b`: paris_a → paris_b
-  - `H_paris_c_to_b`: paris_c → paris_b
-  
-- **cmpe_building & north_campus**: Sequential composition
-  - Left: `H_left2_to_left1` then `H_left1_to_middle`, composed as `H_left2_to_middle`
-  - Right: `H_right2_to_right1` then `H_right1_to_middle`, composed as `H_right2_to_middle`
-  
-All homographies map toward the middle image coordinate system.
-
-## Creating Panoramas
-
-### Pipeline Example
-Run the complete panorama creation pipeline:
-
-```bash
-# Paris 3-image panorama (default)
-python pipeline_example.py
-
-# Custom two-image panorama
-python pipeline_example.py <img1_path> <img2_path> [corr_file]
-```
-
-Additional CLI helpers (see `pipeline_example.py --help`):
-
-- **Pairwise stitch** (direction flag + optional corr/output):
-  ```bash
-  python pipeline_example.py pair <img_a> <img_b> [ltr|rtl] [corr_file] [output]
-  ```
-- **Anchor triplet** (explicit left/middle/right):
-  ```bash
-  python pipeline_example.py anchor <left_img> <middle_img> <right_img> [corr_left_middle] [corr_middle_right] [output]
-  ```
-
-Each mode saves the full canvas panorama.
-
-### Pipeline Steps
-1. **Point Correspondence**: Select corresponding points between images (or load from file)
-2. **Homography Estimation**: Compute transformation matrices using `computeH(points_im1, points_im2)`
-3. **Image Warping**: Warp images using `warp(image, homography)` with backward transform
-4. **Blending**: Merge warped images using maximum intensity for overlapping regions
-
-### Correspondence Effects Analysis
-To reproduce the correspondence sensitivity experiments on the Paris image pair:
-```bash
-python correspondence_effects.py
-```
-This generates panoramas and a summary report in `output/correspondence_effects/` for:
-- Using only five correspondences
-- Using many correspondences
-- Injecting incorrect matches
-- Adding pixel noise with different variances
-- Disabling normalization
-
-## Notes
-- Manual point correspondence selection (automated feature detection forbidden)
-- Homography computation uses DLT (Direct Linear Transform) algorithm with normalization
-- Image order matters: All homographies computed toward middle anchor
-- Warping uses backward transform with bilinear interpolation (OpenCV remap or SciPy griddata)
-- Blending uses maximum intensity method: overlapping pixels take maximum value
+Enjoy stitching! If you modify the datasets or capture your own images, simply
+provide them in left-to-right order and re-run `main.py` to generate a new
+panorama.*** End Patch
 
