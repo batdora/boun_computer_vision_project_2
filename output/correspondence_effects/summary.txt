@@ -1,39 +1,39 @@
 baseline_all: All available correspondences (15) with normalization.
-  points=15, normalize=True
+  left_points=15, right_points=15, normalize=True
   reprojection mean=1.08px, max=2.88px
   output=output/correspondence_effects/baseline_all/baseline_all.jpg
 
 points_5: Random 5 correspondence pairs.
-  points=5, normalize=True
+  left_points=5, right_points=5, normalize=True
   reprojection mean=0.41px, max=0.91px
   output=output/correspondence_effects/points_5/points_5.jpg
 
 points_max: Using all available correspondences.
-  points=15, normalize=True
+  left_points=15, right_points=15, normalize=True
   reprojection mean=1.08px, max=2.88px
   output=output/correspondence_effects/points_max/points_max.jpg
 
-wrong_points: Inject 5 random incorrect matches.
-  points=20, normalize=True
-  reprojection mean=1053.62px, max=8661.41px
+wrong_points: Duplicate correspondences and inject an equally-sized set of random mismatches.
+  left_points=30, right_points=30, normalize=True
+  reprojection mean=293.64px, max=1535.89px
   output=output/correspondence_effects/wrong_points/wrong_points.jpg
 
 noise_sigma_1: Add Gaussian noise (sigma=1 px) to correspondences.
-  points=15, normalize=True
-  reprojection mean=1.45px, max=3.98px
+  left_points=15, right_points=15, normalize=True
+  reprojection mean=1.90px, max=3.25px
   output=output/correspondence_effects/noise_sigma_1/noise_sigma_1.jpg
 
 noise_sigma_3: Add Gaussian noise (sigma=3 px) to correspondences.
-  points=15, normalize=True
-  reprojection mean=5.48px, max=12.24px
+  left_points=15, right_points=15, normalize=True
+  reprojection mean=4.91px, max=10.06px
   output=output/correspondence_effects/noise_sigma_3/noise_sigma_3.jpg
 
 noise_sigma_5: Add Gaussian noise (sigma=5 px) to correspondences.
-  points=15, normalize=True
-  reprojection mean=7.84px, max=17.85px
+  left_points=15, right_points=15, normalize=True
+  reprojection mean=9.14px, max=20.49px
   output=output/correspondence_effects/noise_sigma_5/noise_sigma_5.jpg
 
 no_normalization: All correspondences without point normalization.
-  points=15, normalize=False
+  left_points=15, right_points=15, normalize=False
   reprojection mean=1.04px, max=3.05px
   output=output/correspondence_effects/no_normalization/no_normalization.jpg
